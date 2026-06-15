@@ -96,6 +96,76 @@
 
 ## 演进路径
 
-- 早期：一个 `workspace/` 试水，看 agent 在裁剪后的视图里效率有没有提升
-- 中期：拆出多个任务级 view（`workspace-auth/`、`workspace-infra/`、...），按任务切换
-- 长期：把 LSP exclude、build policy、CI check 沉淀为团队规范；如发现某些子领域确实需要硬隔离，再为那些子领域单独引入容器，**不要全局上容器**
+### 早期：单一 workspace 试水
+
+一个 `workspace/` 装当前任务相关的几个目录。观察 agent 在裁剪后的视图里效率是否提升、commit message 路径表达是否乱、build 产物有没有跑偏。这是验证方案合不合适的阶段。
+
+### 中期：拆出多个任务级 view
+
+业务规模上来后，单一 workspace 又会变成新的"噪声集中地"。按任务 / 子系统拆 view：
+
+```
+workspace-auth/      → 链入 auth 相关目录
+workspace-billing/   → 链入 billing
+workspace-infra/     → 链入 infra
+```
+
+每个 view 配自己的 `CLAUDE.md`（写明覆盖哪些规范路径、当前焦点）。agent 启动时指定 cwd 进入对应 view。
+
+### 长期：沉淀规范 + 子领域按需硬隔离
+
+把 LSP exclude、build policy、CI 健康检查沉淀为团队规范。同时识别**少数确实需要硬隔离的子领域**单独上更强的边界 —— **不要全局上容器**。
+
+#### 为什么不要全局容器化
+
+整个 monorepo 大部分代码（业务逻辑、纯算法、UI 组件）压根不需要硬隔离。全局上容器会带来：开发循环慢、工具链要重装、网络限制破坏 build/test、IDE / LSP 接入复杂化。值得为它付出这些代价的是少数。
+
+#### 哪些子领域值得硬隔离
+
+| 子领域 | 不隔离的真实风险 |
+|--------|----------------|
+| `secrets/`、`.env*`、私钥目录 | agent 误读 → 凭据进 transcript / log / git history |
+| `db/migrations/` 接生产 schema | agent 跑迁移 → 改坏生产库 |
+| 调用外部 API key / 链上钱包的脚本 | 误调用 → 真扣费、不可逆 onchain 操作 |
+| `infra/terraform/`、`ops/k8s/` | `apply` 一下 → 改了生产环境 |
+| `experimental/`、`vendor/third-party/` 跑不可信代码 | `npm/cargo install` 拉恶意依赖污染工作目录 |
+
+#### 隔离手段（从重到轻，按需选用）
+
+1. **真容器（devcontainer / docker compose）**
+   - 在 `workspace-migrations/` 这种敏感 view 下放 `devcontainer.json`
+   - agent 进入该 view 时启动到容器里跑，bind mount 只挂这个 view，不挂整个仓库
+   - 最重，但隔离最彻底（独立网络栈、独立 fs view、独立工具链）
+
+2. **bwrap / firejail / nsjail**
+   - 轻量 sandbox 工具，per-command 包装
+   - 启动比容器快，配置简单，适合 CI 里跑高危命令
+
+3. **Claude Code 自带 sandbox（最贴合本方案）**
+   - 在敏感 view 目录里放 `.claude/settings.local.json`：
+     ```json
+     {
+       "sandbox": {
+         "enabled": true,
+         "filesystem": {
+           "denyRead":  ["secrets/**", "**/.env*"],
+           "denyWrite": ["db/migrations/**", "infra/**"]
+         },
+         "network": { "deniedDomains": ["*"] }
+       },
+       "permissions": {
+         "deny": ["Bash(terraform apply *)", "Bash(kubectl apply *)"]
+       }
+     }
+     ```
+   - 只对这一个 view 生效，主仓库正常工作不受影响
+   - 跟着本方案的整体哲学（约定 + 适配层）走，引入成本最低
+
+4. **PreToolUse hook 软拦截**
+   - 写 hook 检测命令 / 路径，进入敏感目录时 deny 高危操作
+   - 最轻，但属于约定级 —— agent 用绝对路径或绕道 shell function 仍可绕过
+   - 适合"挡住意外"，挡不住有意越界
+
+#### 实操推荐
+
+业务代码用 workspace symlink + 软约定就够；上面 5 类敏感子领域**单独配 Claude Code sandbox（方式 3）**；真要更硬的就 devcontainer（方式 1）。不要为了"统一"把整个仓库塞进容器。
