@@ -1,6 +1,10 @@
 # Workspace Starter
 
-巨型项目 agent view 模板。结构：
+巨型项目 agent view 模板。
+
+> **接入前先读 [`DESIGN.md`](./DESIGN.md)** —— 适用场景、利弊分析、与其他方案的对比、决策清单。本 README 只讲"怎么用"。
+
+结构：
 
 ```
 <your-repo>/
