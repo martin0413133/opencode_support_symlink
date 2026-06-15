@@ -1,4 +1,25 @@
 {
+  "permissions": {
+    "additionalDirectories": ["../bsc_str_lib"],
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(readlink:*)",
+      "Bash(node .claude/hooks/rewrite-bash.test.mjs)",
+      "Bash(.claude/scripts/check-symlinks.sh)"
+    ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "hooks": {
     "PreToolUse": [
       {
