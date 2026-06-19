@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "additionalDirectories": ["/"],
+    "allow": [
+      "Bash(**)",
+      "Edit(**)",
+      "Read(**)",
+      "Write(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "WebFetch(**)",
+      "TodoWrite(**)"
+    ]
+  }
+}
